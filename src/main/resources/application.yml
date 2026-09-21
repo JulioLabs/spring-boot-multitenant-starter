@@ -1,0 +1,18 @@
+# Excerpt: only the settings that matter for multi-tenancy.
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: none # the schema is owned by Flyway migrations
+    properties:
+      hibernate:
+        # Switches Hibernate into discriminator-column multi-tenancy.
+        # Entities annotated with @TenantId (see TenantAwareEntity) get "tenant_id_filter = ?"
+        # appended to every query. The tenant value comes from CurrentTenantIdentifierResolverImpl,
+        # which PrimaryDataSourceConfig registers as hibernate.tenant_identifier_resolver.
+        multiTenancy: DISCRIMINATOR

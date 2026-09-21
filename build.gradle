@@ -1,0 +1,48 @@
+// REFERENCE ONLY. This file lists the dependencies the code in this repo relies on, so you
+// can see what each piece needs. It is not a supported, buildable project.
+
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.4.4'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'  // Hibernate 6.6 (multiTenancy=DISCRIMINATOR, @TenantId)
+    implementation 'org.springframework.boot:spring-boot-starter-security'  // SecurityContextHolder, read by the tenant filter
+    implementation 'org.springframework.boot:spring-boot-starter-aop'       // TenantAwareAspect (AspectJ)
+
+    // @Tsid id generation used by TenantAwareEntity
+    implementation 'io.hypersistence:hypersistence-utils-hibernate-63:3.9.9'
+    // TransmittableThreadLocal used by TenantContextHolder
+    implementation 'com.alibaba:transmittable-thread-local:2.14.5'
+
+    implementation 'org.flywaydb:flyway-core'
+    implementation 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
+
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.testcontainers:postgresql'
+    testImplementation 'org.testcontainers:junit-jupiter'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
