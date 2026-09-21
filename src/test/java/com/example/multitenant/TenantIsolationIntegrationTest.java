@@ -25,14 +25,19 @@ import org.testcontainers.junit.jupiter.Testcontainers;
  * context is cleared afterwards.
  *
  * <p>Adapted from the pattern of our internal repository isolation tests: two tenants, data written under one, reads attempted under the other.
+ *
+ * <p>Why a real database and not H2 or mocks: the guarantee being tested is the SQL Hibernate generates ({@code ... WHERE tenant_id_filter = ?}), so the test needs the real
+ * engine and the real Flyway schema. Mocked repositories would prove nothing about isolation.
  */
 @SpringBootTest
 @Testcontainers
 class TenantIsolationIntegrationTest {
 
+  // One container shared by all tests in this class. Flyway (auto-configured) creates the schema from db/migration on startup.
   @Container
   static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:16-alpine");
 
+  // The container's port is random, so the datasource settings can only be supplied at runtime. These override the ${DB_URL}-style placeholders in application.yml.
   @DynamicPropertySource
   static void datasourceProperties(DynamicPropertyRegistry registry) {
     registry.add("spring.datasource.url", postgres::getJdbcUrl);
@@ -53,29 +58,33 @@ class TenantIsolationIntegrationTest {
   @BeforeEach
   void setUp() {
     TenantContextHolder.clear();
-    // Tenant is not tenant-aware, so it can be created under any context.
+    // Tenant is not tenant-aware, so it can be created under any context. Names are random because tenants.name is unique and the database is shared between tests.
     tenantA = tenantRepository.save(Tenant.builder().name("tenant-a-" + UUID.randomUUID()).build());
     tenantB = tenantRepository.save(Tenant.builder().name("tenant-b-" + UUID.randomUUID()).build());
   }
 
   @AfterEach
   void tearDown() {
-    // Root mode sees every tenant's rows, so this cleans up all of them.
+    // Root mode sees every tenant's rows, so this cleans up all of them. Always clear the context afterwards, exactly as the request filter's finally block does; a leftover
+    // tenant would leak into whichever test runs next on this thread.
     TenantContextHolder.setPublicRequest(true);
     projectRepository.deleteAll();
     TenantContextHolder.clear();
   }
 
+  // Writes: the tenant comes from the context, not from the caller. Application code never has to pass it.
   @Test
   void save_WithTenantContext_StampsTheCurrentTenant() {
     TenantContextHolder.setTenant(tenantA);
 
     Project saved = projectRepository.save(Project.builder().name("alpha").build());
 
+    // Both the relationship (tenant) and the Hibernate discriminator (tenantIdFilter) must agree.
     assertThat(saved.getTenant().getId()).isEqualTo(tenantA.getId());
     assertThat(saved.getTenantIdFilter()).isEqualTo(String.valueOf(tenantA.getId()));
   }
 
+  // Reads: this is the core promise. Note that every kind of lookup is covered (findAll, findById, derived query), because each is a different generated query.
   @Test
   void queries_AsAnotherTenant_DoNotSeeTheRows() {
     TenantContextHolder.setTenant(tenantA);
@@ -84,14 +93,17 @@ class TenantIsolationIntegrationTest {
     TenantContextHolder.setTenant(tenantB);
 
     assertThat(projectRepository.findAll()).isEmpty();
+    // Even knowing the exact id of another tenant's row is not enough to load it.
     assertThat(projectRepository.findById(alpha.getId())).isEmpty();
     assertThat(projectRepository.findByName("alpha")).isEmpty();
 
+    // Switching back proves the row was hidden by the filter, not lost.
     TenantContextHolder.setTenant(tenantA);
 
     assertThat(projectRepository.findAll()).hasSize(1);
   }
 
+  // Fail closed: forgetting to set a tenant must never widen access.
   @Test
   void queries_WithoutTenantContext_SeeNothing() {
     TenantContextHolder.setTenant(tenantA);
@@ -103,6 +115,7 @@ class TenantIsolationIntegrationTest {
     assertThat(projectRepository.findAll()).isEmpty();
   }
 
+  // The deliberate exception. Documents exactly what "public request" costs: no filtering at all.
   @Test
   void queries_InPublicRequestMode_SeeEveryTenant() {
     TenantContextHolder.setTenant(tenantA);
@@ -117,6 +130,7 @@ class TenantIsolationIntegrationTest {
     assertThat(projectRepository.findAll()).extracting(Project::getName).containsExactlyInAnyOrder("alpha", "beta");
   }
 
+  // The aspect's second job: refuse to write an entity that points at another tenant, e.g. one built from an id supplied by a client.
   @Test
   void save_WithEntityOfAnotherTenant_IsRejected() {
     TenantContextHolder.setTenant(tenantA);

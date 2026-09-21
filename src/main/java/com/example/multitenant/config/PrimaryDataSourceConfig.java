@@ -22,6 +22,10 @@ import org.springframework.transaction.annotation.EnableTransactionManagement;
  *
  * <p>Together with {@code spring.jpa.properties.hibernate.multiTenancy=DISCRIMINATOR} (see application.yml), the {@code hibernate.tenant_identifier_resolver} property is the piece
  * that switches Hibernate into discriminator-column multi-tenancy.
+ *
+ * <p>The three beans (DataSource, EntityManagerFactory, TransactionManager) are declared by hand so the Spring-managed resolver can be handed to the EntityManagerFactory. Declaring
+ * them explicitly also leaves room for a second, non-tenant-aware persistence unit next to this one, for data that should never be filtered by tenant. The {@code @Primary}
+ * markers keep this one the default.
  */
 @Configuration
 @EnableTransactionManagement
@@ -33,6 +37,7 @@ public class PrimaryDataSourceConfig {
   public DataSource dataSource(@Value("${spring.datasource.url}") String url, @Value("${spring.datasource.username}") String username, @Value("${spring.datasource.password}") String password,
                                @Value("${spring.datasource.driver-class-name}") String driverClassName) {
 
+    // Connection details come from configuration (environment variables in application.yml), never from code.
     return DataSourceBuilder
           .create()
           .url(url)
@@ -49,9 +54,11 @@ public class PrimaryDataSourceConfig {
       @Qualifier("dataSource") DataSource dataSource,
       CurrentTenantIdentifierResolverImpl tenantIdentifierResolver) {
 
+    // The builder is provided by Spring Boot and carries the spring.jpa.* settings, including hibernate.multiTenancy=DISCRIMINATOR. The one thing it cannot know about is our
+    // resolver, so we add it here. Passing the bean instance (not a class name) means Hibernate uses the exact object Spring manages.
     return builder
           .dataSource(dataSource)
-          .packages("com.example.multitenant")
+          .packages("com.example.multitenant")  // where Hibernate looks for @Entity classes
           .persistenceUnit("primaryPU")
           .properties(Map.of("hibernate.tenant_identifier_resolver", tenantIdentifierResolver))
           .build();
@@ -61,6 +68,7 @@ public class PrimaryDataSourceConfig {
   @Bean(name = "transactionManager")
   public PlatformTransactionManager transactionManager(@Qualifier("entityManagerFactory") EntityManagerFactory emf) {
 
+    // Transactions must be bound to the tenant-aware EntityManagerFactory above, otherwise repositories would get sessions that ignore the tenant.
     return new JpaTransactionManager(emf);
   }
 }

@@ -22,6 +22,7 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 public class Project extends TenantAwareEntity {
 
+  // The only field this entity declares. Id, tenant, discriminator and timestamps all come from TenantAwareEntity, and the matching columns are in V1__tenancy_core.sql.
   @Column(nullable = false)
   private String name;
 }

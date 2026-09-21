@@ -10,5 +10,6 @@ import org.springframework.stereotype.Repository;
 @Repository
 public interface ProjectRepository extends JpaRepository<Project, Long> {
 
+  // Returns only the current tenant's projects with this name. Another tenant's project with the same name is invisible, which the isolation test checks.
   List<Project> findByName(String name);
 }

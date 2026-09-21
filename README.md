@@ -1,9 +1,11 @@
 # spring-boot-multitenant-starter
 
+**Maintained by the creators of [PresenceWave](https://presencewave.com).** PresenceWave helps local service businesses (cleaning, landscaping, electricians, dentists and more) capture more leads, understand their customers and bring them back, all from one platform.
+
 Reference code showing how **Spring Boot and Hibernate are wired together for multi-tenancy** using a shared schema and a discriminator column.
 
 > **This repo is reference material, not a library or a runnable project.**
-> It is extracted from a production multi-tenant SaaS and trimmed to the tenancy plumbing so it can be read alongside a series of blog posts. It has **not been compiled or run in this form**, and the code is not published to any artifact repository. Use it to understand the design, not as a drop-in dependency.
+> It is extracted from PresenceWave, a production multi-tenant SaaS, and trimmed to the tenancy plumbing so it can be read alongside a series of blog posts. It has **not been compiled or run in this form**, and the code is not published to any artifact repository. Use it to understand the design, not as a drop-in dependency.
 
 ## The idea in one picture
 

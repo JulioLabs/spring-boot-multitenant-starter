@@ -29,6 +29,7 @@ public class User {
   @GeneratedValue(strategy = GenerationType.IDENTITY)
   private Long id;
 
+  // Globally unique (not per tenant), and the key the request filter uses to find a user's tenant. See TenantUserRepository#findByUserEmail.
   @Column(nullable = false, unique = true)
   private String email;
 }
