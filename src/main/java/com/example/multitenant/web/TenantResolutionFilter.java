@@ -36,75 +36,75 @@ import org.springframework.web.filter.GenericFilterBean;
  */
 public class TenantResolutionFilter extends GenericFilterBean {
 
-    private static final Logger LOGGER = LoggerFactory.getLogger(TenantResolutionFilter.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(TenantResolutionFilter.class);
 
-    // Only paths under this prefix are treated as tenant-scoped. Everything else (login page, public pages) runs as a public request.
-    private static final String TENANT_SCOPED_PATH_PREFIX = "/api";
+  // Only paths under this prefix are treated as tenant-scoped. Everything else (login page, public pages) runs as a public request.
+  private static final String TENANT_SCOPED_PATH_PREFIX = "/api";
 
-    private final TenantUserRepository tenantUserRepository;
+  private final TenantUserRepository tenantUserRepository;
 
-    public TenantResolutionFilter(TenantUserRepository tenantUserRepository) {
-        this.tenantUserRepository = tenantUserRepository;
+  public TenantResolutionFilter(TenantUserRepository tenantUserRepository) {
+    this.tenantUserRepository = tenantUserRepository;
+  }
+
+  @Override
+  public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain) throws IOException, ServletException {
+    // GenericFilterBean hands us the raw servlet types; we only make sense for HTTP.
+    if (!((servletRequest instanceof HttpServletRequest httpRequest) && (servletResponse instanceof HttpServletResponse))) {
+      throw new ServletException("TenantResolutionFilter only supports HTTP requests");
     }
 
-    @Override
-    public void doFilter(ServletRequest servletRequest, ServletResponse servletResponse, FilterChain filterChain) throws IOException, ServletException {
-        // GenericFilterBean hands us the raw servlet types; we only make sense for HTTP.
-        if (!((servletRequest instanceof HttpServletRequest httpRequest) && (servletResponse instanceof HttpServletResponse))) {
-            throw new ServletException("TenantResolutionFilter only supports HTTP requests");
-        }
+    String path = httpRequest.getRequestURI();
 
-        String path = httpRequest.getRequestURI();
-
-        // Skip filter for static resources, health checks, etc. These never touch tenant data, so they should not pay for a membership lookup.
-        if (shouldSkipFilter(path)) {
-            filterChain.doFilter(servletRequest, servletResponse);
-            return;
-        }
-
-        // The try/finally is the important part. The servlet container reuses threads, so if the context were left behind, the next request on this thread would silently run as
-        // this request's tenant. Anything thrown by resolution or by the rest of the chain still ends up in the finally.
-        try {
-            resolveTenant(path);
-            filterChain.doFilter(servletRequest, servletResponse);
-        } finally {
-            TenantContextHolder.clear();
-        }
+    // Skip filter for static resources, health checks, etc. These never touch tenant data, so they should not pay for a membership lookup.
+    if (shouldSkipFilter(path)) {
+      filterChain.doFilter(servletRequest, servletResponse);
+      return;
     }
 
-    private void resolveTenant(String path) {
-        if (!path.startsWith(TENANT_SCOPED_PATH_PREFIX)) {
-            // Not a tenant-scoped endpoint: public request, Hibernate runs in root mode.
-            TenantContextHolder.setPublicRequest(true);
-            return;
-        }
+    // The try/finally is the important part. The servlet container reuses threads, so if the context were left behind, the next request on this thread would silently run as
+    // this request's tenant. Anything thrown by resolution or by the rest of the chain still ends up in the finally.
+    try {
+      resolveTenant(path);
+      filterChain.doFilter(servletRequest, servletResponse);
+    } finally {
+      TenantContextHolder.clear();
+    }
+  }
 
-        Authentication auth = SecurityContextHolder
-                .getContext()
-                .getAuthentication();
-        if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof UserDetails userDetails) {
-            // Native query: it must run before the tenant is known. See TenantUserRepository.
-            // Failing here rather than falling back to "public" matters: an authenticated user with no tenant is a data problem, and treating them as public would switch
-            // tenant filtering off for a request that is supposed to be scoped.
-            TenantUser membership = tenantUserRepository
-                    .findByUserEmail(userDetails.getUsername())
-                    .orElseThrow(() -> new IllegalStateException("Authenticated user has no tenant membership"));
-
-            TenantContextHolder.setTenant(membership.getTenant());
-            LOGGER.trace("Set tenant {} for authenticated user", membership
-                    .getTenant()
-                    .getId());
-        } else {
-            // Unauthenticated API call: no tenant, and root mode so public endpoints (e.g. login) can still read. Order matters here: setTenant(null) resets the public flag to
-            // false, so the flag has to be set afterwards.
-            TenantContextHolder.setTenant(null);
-            TenantContextHolder.setPublicRequest(true);
-            LOGGER.debug("No authenticated user, treating as public request");
-        }
+  private void resolveTenant(String path) {
+    if (!path.startsWith(TENANT_SCOPED_PATH_PREFIX)) {
+      // Not a tenant-scoped endpoint: public request, Hibernate runs in root mode.
+      TenantContextHolder.setPublicRequest(true);
+      return;
     }
 
-    // A simple path-prefix check. Add anything here that never reads tenant data.
-    private boolean shouldSkipFilter(String path) {
-        return path.startsWith("/static/") || path.startsWith("/assets/") || path.startsWith("/favicon.ico") || path.startsWith("/health") || path.startsWith("/actuator/");
+    Authentication auth = SecurityContextHolder
+        .getContext()
+        .getAuthentication();
+    if (auth != null && auth.isAuthenticated() && auth.getPrincipal() instanceof UserDetails userDetails) {
+      // Native query: it must run before the tenant is known. See TenantUserRepository.
+      // Failing here rather than falling back to "public" matters: an authenticated user with no tenant is a data problem, and treating them as public would switch
+      // tenant filtering off for a request that is supposed to be scoped.
+      TenantUser membership = tenantUserRepository
+          .findByUserEmail(userDetails.getUsername())
+          .orElseThrow(() -> new IllegalStateException("Authenticated user has no tenant membership"));
+
+      TenantContextHolder.setTenant(membership.getTenant());
+      LOGGER.trace("Set tenant {} for authenticated user", membership
+          .getTenant()
+          .getId());
+    } else {
+      // Unauthenticated API call: no tenant, and root mode so public endpoints (e.g. login) can still read. Order matters here: setTenant(null) resets the public flag to
+      // false, so the flag has to be set afterwards.
+      TenantContextHolder.setTenant(null);
+      TenantContextHolder.setPublicRequest(true);
+      LOGGER.debug("No authenticated user, treating as public request");
     }
+  }
+
+  // A simple path-prefix check. Add anything here that never reads tenant data.
+  private boolean shouldSkipFilter(String path) {
+    return path.startsWith("/static/") || path.startsWith("/assets/") || path.startsWith("/favicon.ico") || path.startsWith("/health") || path.startsWith("/actuator/");
+  }
 }

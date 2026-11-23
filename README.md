@@ -1,5 +1,8 @@
 # spring-boot-multitenant-starter
 
+[![Tests](https://github.com/JulioLabs/spring-boot-multitenant-starter/actions/workflows/test.yml/badge.svg)](https://github.com/JulioLabs/spring-boot-multitenant-starter/actions/workflows/test.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 How to wire **Spring Boot 3 and Hibernate 6 together for multi-tenancy** with a shared schema and a discriminator column, so repositories and services never mention the tenant and one tenant can't read another's rows.
 
 The code is the tenancy plumbing from [PresenceWave](https://presencewave.com), a multi-tenant SaaS running in production, trimmed to the parts that matter and covered by isolation tests against a real PostgreSQL.
@@ -26,7 +29,21 @@ cd spring-boot-multitenant-starter
 | `queries_InPublicRequestMode_SeeEveryTenant` | The deliberate exception: a "public request" switches filtering off. |
 | `save_WithEntityOfAnotherTenant_IsRejected` | Saving an entity that points at another tenant throws. |
 
-The test report is in `build/reports/tests/test/index.html`. To see the SQL Hibernate generates, with `tenant_id_filter = ?` added to every query, set `spring.jpa.show-sql: true` in `application.yml` and run the tests again.
+The test report is in `build/reports/tests/test/index.html`.
+
+To see the SQL Hibernate generates, run the tests with SQL logging on:
+
+```bash
+SPRING_JPA_SHOW_SQL=true ./gradlew test --rerun-tasks -i | grep "Hibernate:.*from projects"
+```
+
+```sql
+select ... from projects p1_0 where p1_0.tenant_id_filter = ?                     -- findAll() as a tenant
+select ... from projects p1_0 where p1_0.tenant_id_filter = ? and p1_0.name = ?   -- findByName("alpha")
+select ... from projects p1_0                                                     -- findAll() in a public request (root mode)
+```
+
+The repository code is the same in all three. Only the tenant context differs.
 
 ## The idea in one picture
 
